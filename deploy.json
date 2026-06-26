@@ -1,0 +1,6 @@
+{
+  "github_owner": "lee3215-ko",
+  "github_repo": "naver-rank-checker",
+  "release_asset": "NaverRankChecker.zip",
+  "default_bump": "patch"
+}

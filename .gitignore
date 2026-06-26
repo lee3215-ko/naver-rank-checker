@@ -1,0 +1,19 @@
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.env
+*.log
+build/
+dist/
+
+# naver-report-app secrets & runtime data
+naver-report-app/settings.json
+naver-report-app/accounts.json
+naver-report-app/results.json
+naver-report-app/tasks.json
+naver-report-app/templates.json
+naver-report-app/data/
+naver-report-app/build/
+naver-report-app/dist/
+naver-report-app/release/
