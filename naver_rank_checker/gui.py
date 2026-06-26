@@ -46,6 +46,7 @@ class TableScrollArea(ctk.CTkFrame):
         super().__init__(master, fg_color="transparent", corner_radius=0)
         self._frozen = False
         self._scroll_job: str | None = None
+        self._wheel_active = False
 
         self._canvas = tk.Canvas(
             self,
@@ -72,18 +73,44 @@ class TableScrollArea(ctk.CTkFrame):
 
         self.body.bind("<Configure>", self._on_body_configure, add="+")
         self._canvas.bind("<Configure>", self._on_canvas_configure, add="+")
-        self._canvas.bind("<MouseWheel>", self._on_mousewheel, add="+")
-        self._scrollbar.bind("<MouseWheel>", self._on_mousewheel, add="+")
-        self._bind_wheel_deep(self.body)
+        self._canvas.bind("<Enter>", self._wheel_enter, add="+")
+        self._canvas.bind("<Leave>", self._wheel_leave, add="+")
+        self.body.bind("<Enter>", self._wheel_enter, add="+")
+        self.body.bind("<Leave>", self._wheel_leave, add="+")
+
+    def _pointer_in_table(self) -> bool:
+        px, py = self.winfo_pointerxy()
+        try:
+            cx = self._canvas.winfo_rootx()
+            cy = self._canvas.winfo_rooty()
+            cw = self._canvas.winfo_width()
+            ch = self._canvas.winfo_height()
+        except tk.TclError:
+            return False
+        return cw > 0 and ch > 0 and cx <= px < cx + cw and cy <= py < cy + ch
+
+    def _wheel_enter(self, _event: tk.Event | None = None) -> None:
+        if self._wheel_active:
+            return
+        self._wheel_active = True
+        self._canvas.bind_all("<MouseWheel>", self._on_mousewheel, add="+")
+
+    def _wheel_leave(self, _event: tk.Event | None = None) -> None:
+        self.after_idle(self._wheel_leave_check)
+
+    def _wheel_leave_check(self) -> None:
+        if self._pointer_in_table():
+            return
+        if self._wheel_active:
+            self._wheel_active = False
+            self._canvas.unbind_all("<MouseWheel>")
 
     def register_widget(self, widget: tk.Misc) -> None:
-        """새로 추가된 행·패널에 마우스 휠 스크롤을 연결합니다."""
-        self._bind_wheel_deep(widget)
-
-    def _bind_wheel_deep(self, widget: tk.Misc) -> None:
-        widget.bind("<MouseWheel>", self._on_mousewheel, add="+")
+        """목록 행 위에서도 휠 스크롤이 동작하도록 Enter/Leave를 연결합니다."""
+        widget.bind("<Enter>", self._wheel_enter, add="+")
+        widget.bind("<Leave>", self._wheel_leave, add="+")
         for child in widget.winfo_children():
-            self._bind_wheel_deep(child)
+            self.register_widget(child)
 
     def _on_body_configure(self, event: tk.Event) -> None:
         if event.widget is self.body:
@@ -101,11 +128,15 @@ class TableScrollArea(ctk.CTkFrame):
         if self._frozen:
             return
         yview = self._canvas.yview()
-        bbox = self._canvas.bbox("all")
-        if bbox:
-            self._canvas.configure(scrollregion=bbox)
-            if yview != (0.0, 1.0):
-                self._canvas.yview_moveto(yview[0])
+        self.body.update_idletasks()
+        width = max(self._canvas.winfo_width(), self.body.winfo_reqwidth(), 1)
+        height = max(self.body.winfo_reqheight(), 1)
+        self._canvas.configure(scrollregion=(0, 0, width, height))
+        if height <= self._canvas.winfo_height():
+            self._canvas.yview_moveto(0)
+        elif yview != (0.0, 1.0):
+            self._canvas.yview_moveto(yview[0])
+        self._clamp_yview()
 
     def _on_canvas_configure(self, event: tk.Event) -> None:
         if self._frozen or event.width <= 1:
@@ -127,16 +158,37 @@ class TableScrollArea(ctk.CTkFrame):
             self._canvas.itemconfigure(self._body_window, width=width)
         self._apply_scrollregion()
 
+    def _clamp_yview(self) -> None:
+        top, bottom = self._canvas.yview()
+        if top < 0.0:
+            self._canvas.yview_moveto(0)
+        elif bottom > 1.0:
+            self._canvas.yview_moveto(1.0 - (bottom - top))
+        elif top > 0.0 and bottom < 1.0:
+            self._canvas.yview_moveto(0)
+
     def _on_mousewheel(self, event: tk.Event) -> None:
-        if self._frozen:
+        if self._frozen or not self._pointer_in_table():
+            return
+        self.body.update_idletasks()
+        if self.body.winfo_reqheight() <= self._canvas.winfo_height():
             return
         delta = -int(event.delta / 120) if event.delta else 0
-        if delta:
-            self._canvas.yview_scroll(delta, "units")
+        if not delta:
+            return
+        top, bottom = self._canvas.yview()
+        if delta < 0 and top <= 0.0:
+            return
+        if delta > 0 and bottom >= 1.0:
+            return
+        self._canvas.yview_scroll(delta, "units")
+        self._clamp_yview()
 
     def destroy(self) -> None:
         if self._scroll_job is not None:
             self.after_cancel(self._scroll_job)
+        if self._wheel_active:
+            self._canvas.unbind_all("<MouseWheel>")
         super().destroy()
 
 

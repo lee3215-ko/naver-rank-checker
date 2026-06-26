@@ -1,6 +1,6 @@
 ﻿"""Shared defaults."""
 
-APP_VERSION = "1.0.4"
+APP_VERSION = "1.0.5"
 
 # GitHub??version.json???щ┛ ???꾨옒 二쇱냼瑜?梨꾩슦?몄슂.
 # ?? https://raw.githubusercontent.com/?댁븘?대뵒/naver-rank-checker/main/version.json
@@ -19,6 +19,7 @@ MAIN_SECTION_AREA = "urB_coR"
 
 # 硫붿씤 ?뱀뀡 釉붾줉 ?욌?遺꾨쭔 ?ㅼ틪 (?꾨줈??留곹겕??釉붾줉 珥덈컲???꾩튂)
 MAIN_SECTION_BLOCK_SCAN = 15000
+
 
 
 
