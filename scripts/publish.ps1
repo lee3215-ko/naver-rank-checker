@@ -140,8 +140,7 @@ if ($LASTEXITCODE -ne 0) {
 }
 
 Write-Host "[4/4] GitHub Release 생성..."
-Invoke-Gh release view $tag *> $null
-if ($LASTEXITCODE -eq 0) {
+if (Test-GhRelease $tag) {
     Invoke-Gh release upload $tag $zipPath --clobber
     Invoke-Gh release edit $tag --notes $Notes --title $newVersion
 } else {

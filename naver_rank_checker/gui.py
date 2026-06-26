@@ -46,7 +46,8 @@ class TableScrollArea(ctk.CTkFrame):
         super().__init__(master, fg_color="transparent", corner_radius=0)
         self._frozen = False
         self._scroll_job: str | None = None
-        self._wheel_bound = False
+        self._root = master.winfo_toplevel()
+        self._global_wheel = False
 
         self._canvas = tk.Canvas(
             self,
@@ -73,8 +74,33 @@ class TableScrollArea(ctk.CTkFrame):
 
         self.body.bind("<Configure>", self._on_body_configure, add="+")
         self._canvas.bind("<Configure>", self._on_canvas_configure, add="+")
-        self.bind("<Enter>", self._bind_wheel, add="+")
-        self.bind("<Leave>", self._unbind_wheel, add="+")
+        self._ensure_global_wheel()
+
+    def _ensure_global_wheel(self) -> None:
+        if self._global_wheel:
+            return
+        self._global_wheel = True
+        self._root.bind_all("<MouseWheel>", self._on_global_mousewheel, add="+")
+
+    def _pointer_over_scroll_area(self) -> bool:
+        px, py = self.winfo_pointerxy()
+        for widget in (self._canvas, self._scrollbar):
+            try:
+                wx = widget.winfo_rootx()
+                wy = widget.winfo_rooty()
+                ww = widget.winfo_width()
+                wh = widget.winfo_height()
+            except tk.TclError:
+                continue
+            if ww > 0 and wh > 0 and wx <= px < wx + ww and wy <= py < wy + wh:
+                return True
+        return False
+
+    def _on_global_mousewheel(self, event: tk.Event) -> str | None:
+        if self._frozen or not self.winfo_ismapped() or not self._pointer_over_scroll_area():
+            return None
+        self._on_mousewheel(event)
+        return "break"
 
     def _on_body_configure(self, event: tk.Event) -> None:
         if event.widget is self.body:
@@ -91,9 +117,12 @@ class TableScrollArea(ctk.CTkFrame):
         self._scroll_job = None
         if self._frozen:
             return
+        yview = self._canvas.yview()
         bbox = self._canvas.bbox("all")
         if bbox:
             self._canvas.configure(scrollregion=bbox)
+            if yview != (0.0, 1.0):
+                self._canvas.yview_moveto(yview[0])
 
     def _on_canvas_configure(self, event: tk.Event) -> None:
         if self._frozen or event.width <= 1:
@@ -122,38 +151,11 @@ class TableScrollArea(ctk.CTkFrame):
         if delta:
             self._canvas.yview_scroll(delta, "units")
 
-    def _bind_wheel(self, _event: tk.Event | None = None) -> None:
-        if self._wheel_bound:
-            return
-        self._wheel_bound = True
-        self.bind_all("<MouseWheel>", self._on_mousewheel, add="+")
-
-    def _unbind_wheel(self, _event: tk.Event | None = None) -> None:
-        self.after_idle(self._maybe_unbind_wheel)
-
-    def _maybe_unbind_wheel(self) -> None:
-        if not self._wheel_bound:
-            return
-        x, y = self.winfo_pointerxy()
-        widget = self.winfo_containing(x, y)
-        if widget is not None and self._contains_widget(widget):
-            return
-        self._wheel_bound = False
-        self.unbind_all("<MouseWheel>")
-
-    def _contains_widget(self, widget: tk.Misc) -> bool:
-        current: tk.Misc | None = widget
-        while current is not None:
-            if current in (self, self.body, self._canvas):
-                return True
-            current = current.master
-        return False
-
     def destroy(self) -> None:
         if self._scroll_job is not None:
             self.after_cancel(self._scroll_job)
-        if self._wheel_bound:
-            self.unbind_all("<MouseWheel>")
+        if self._global_wheel:
+            self._root.unbind_all("<MouseWheel>")
         super().destroy()
 
 
@@ -220,8 +222,6 @@ class NaverRankApp(ctk.CTk):
         self._select_all_var = ctk.BooleanVar(value=False)
         self._closing = False
         self._table_batch_token = 0
-        self._last_root_size: tuple[int, int] = (0, 0)
-        self._resize_after_id: str | None = None
 
         self.grid_columnconfigure(0, weight=1)
         self.grid_rowconfigure(2, weight=1)
@@ -232,7 +232,6 @@ class NaverRankApp(ctk.CTk):
         self._build_status_bar()
         self._update_table_metadata()
         self.protocol("WM_DELETE_WINDOW", self._on_close)
-        self.bind("<Configure>", self._on_root_configure, add="+")
         self.after(1, self._deferred_startup)
 
         self.url_entry.bind("<Return>", lambda _e: self.keyword_text.focus())
@@ -247,24 +246,6 @@ class NaverRankApp(ctk.CTk):
         self._prewarm_fonts()
         self._refresh_table(defer_rows=True)
         self.after(2500, self._check_for_updates)
-
-    def _on_root_configure(self, event: tk.Event) -> None:
-        if self._closing or event.widget is not self or event.width < 100 or event.height < 100:
-            return
-        size = (event.width, event.height)
-        if size == self._last_root_size:
-            return
-        self._last_root_size = size
-        self.table_scroll.set_frozen(True)
-        if self._resize_after_id is not None:
-            self.after_cancel(self._resize_after_id)
-        self._resize_after_id = self.after(120, self._end_root_resize)
-
-    def _end_root_resize(self) -> None:
-        self._resize_after_id = None
-        if self._closing:
-            return
-        self.table_scroll.set_frozen(False)
 
     def _build_top_bar(self) -> None:
         top = ctk.CTkFrame(self, fg_color=HEADER_BG, corner_radius=0, height=96)
@@ -1415,7 +1396,6 @@ class NaverRankApp(ctk.CTk):
             "_save_after_id",
             "_status_after_id",
             "_filter_after_id",
-            "_resize_after_id",
         ):
             after_id = getattr(self, attr, None)
             if after_id is not None:

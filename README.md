@@ -57,3 +57,10 @@ python -m naver_rank_checker -u https://example.com -k "키워드"
 
 - 과도한 요청 시 차단될 수 있으니 요청 간격(기본 2초)을 유지하세요.
 - 데이터 저장: `%APPDATA%\NaverRankChecker\entries.json`
+
+## 관련 프로젝트
+
+네이버 **사이트 자동 신고** 프로그램은 별도 폴더에서 관리합니다.
+
+- 경로: `C:\Users\thdco\naver-report-app`
+- GitHub: [lee3215-ko/naver-report-app](https://github.com/lee3215-ko/naver-report-app)

@@ -1,5 +1,5 @@
 ﻿{
-    "version":  "1.0.2",
+    "version":  "1.0.3",
     "url":  "https://github.com/lee3215-ko/naver-rank-checker/releases/latest/download/NaverRankChecker.zip",
-    "notes":  "앱 내 자동 업데이트 지원"
+    "notes":  "목록 스크롤 및 창 이동 시 밀림 수정"
 }

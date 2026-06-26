@@ -38,6 +38,19 @@ function Invoke-Gh {
     }
 }
 
+function Test-GhRelease([string]$Tag) {
+    $gh = Get-GhExe
+    if (-not $gh) {
+        return $false
+    }
+    $prev = $ErrorActionPreference
+    $ErrorActionPreference = "SilentlyContinue"
+    & $gh release view $Tag 2>$null | Out-Null
+    $ok = $LASTEXITCODE -eq 0
+    $ErrorActionPreference = $prev
+    return $ok
+}
+
 function Ensure-GhInstalled {
     if (Get-GhExe) {
         return
