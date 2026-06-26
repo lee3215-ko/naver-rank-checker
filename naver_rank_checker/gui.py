@@ -46,8 +46,6 @@ class TableScrollArea(ctk.CTkFrame):
         super().__init__(master, fg_color="transparent", corner_radius=0)
         self._frozen = False
         self._scroll_job: str | None = None
-        self._root = master.winfo_toplevel()
-        self._global_wheel = False
 
         self._canvas = tk.Canvas(
             self,
@@ -74,33 +72,18 @@ class TableScrollArea(ctk.CTkFrame):
 
         self.body.bind("<Configure>", self._on_body_configure, add="+")
         self._canvas.bind("<Configure>", self._on_canvas_configure, add="+")
-        self._ensure_global_wheel()
+        self._canvas.bind("<MouseWheel>", self._on_mousewheel, add="+")
+        self._scrollbar.bind("<MouseWheel>", self._on_mousewheel, add="+")
+        self._bind_wheel_deep(self.body)
 
-    def _ensure_global_wheel(self) -> None:
-        if self._global_wheel:
-            return
-        self._global_wheel = True
-        self._root.bind_all("<MouseWheel>", self._on_global_mousewheel, add="+")
+    def register_widget(self, widget: tk.Misc) -> None:
+        """새로 추가된 행·패널에 마우스 휠 스크롤을 연결합니다."""
+        self._bind_wheel_deep(widget)
 
-    def _pointer_over_scroll_area(self) -> bool:
-        px, py = self.winfo_pointerxy()
-        for widget in (self._canvas, self._scrollbar):
-            try:
-                wx = widget.winfo_rootx()
-                wy = widget.winfo_rooty()
-                ww = widget.winfo_width()
-                wh = widget.winfo_height()
-            except tk.TclError:
-                continue
-            if ww > 0 and wh > 0 and wx <= px < wx + ww and wy <= py < wy + wh:
-                return True
-        return False
-
-    def _on_global_mousewheel(self, event: tk.Event) -> str | None:
-        if self._frozen or not self.winfo_ismapped() or not self._pointer_over_scroll_area():
-            return None
-        self._on_mousewheel(event)
-        return "break"
+    def _bind_wheel_deep(self, widget: tk.Misc) -> None:
+        widget.bind("<MouseWheel>", self._on_mousewheel, add="+")
+        for child in widget.winfo_children():
+            self._bind_wheel_deep(child)
 
     def _on_body_configure(self, event: tk.Event) -> None:
         if event.widget is self.body:
@@ -154,8 +137,6 @@ class TableScrollArea(ctk.CTkFrame):
     def destroy(self) -> None:
         if self._scroll_job is not None:
             self.after_cancel(self._scroll_job)
-        if self._global_wheel:
-            self._root.unbind_all("<MouseWheel>")
         super().destroy()
 
 
@@ -780,6 +761,7 @@ class NaverRankApp(ctk.CTk):
         self._empty_panel.grid(
             row=0, column=0, columnspan=len(self._col_specs), pady=80, sticky="ew"
         )
+        self.table_scroll.register_widget(self._empty_panel)
 
     def _update_table_metadata(self) -> None:
         all_entries = self.store.list_entries()
@@ -1118,6 +1100,7 @@ class NaverRankApp(ctk.CTk):
             "site_entry": site_entry,
             "check_var": check_var,
         }
+        self.table_scroll.register_widget(row)
 
     def _get_keyword_text(self) -> str:
         return self.keyword_text.get("1.0", "end").strip()
@@ -1413,7 +1396,6 @@ class NaverRankApp(ctk.CTk):
         self._closing = True
         self._cancel_event = True
         self.protocol("WM_DELETE_WINDOW", self.destroy)
-        self.unbind("<Configure>")
         self._cancel_pending_timers()
         self.withdraw()
         try:

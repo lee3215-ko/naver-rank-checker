@@ -1,5 +1,5 @@
 ﻿{
-    "version":  "1.0.3",
+    "version":  "1.0.4",
     "url":  "https://github.com/lee3215-ko/naver-rank-checker/releases/latest/download/NaverRankChecker.zip",
-    "notes":  "목록 스크롤 및 창 이동 시 밀림 수정"
+    "notes":  "마우스 휠 스크롤 크래시 수정"
 }
