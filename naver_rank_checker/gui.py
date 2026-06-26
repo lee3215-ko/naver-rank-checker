@@ -1,10 +1,13 @@
 from __future__ import annotations
 
 import threading
+import tempfile
 import time
 import tkinter as tk
+import urllib.error
 import webbrowser
 from datetime import datetime
+from pathlib import Path
 
 import customtkinter as ctk
 from tkinter import messagebox
@@ -20,7 +23,7 @@ from .storage import (
     format_datetime,
     format_rank,
 )
-from .updater import UpdateInfo, check_for_update
+from .updater import UpdateInfo, can_auto_update, check_for_update, download_file, schedule_apply_update
 
 ACCENT = "#03C75A"
 ACCENT_HOVER = "#02B350"
@@ -584,8 +587,21 @@ class NaverRankApp(ctk.CTk):
         )
         if info.notes:
             message += f"\n\n{info.notes}"
+
+        if can_auto_update() and info.url:
+            message += (
+                "\n\n「예」를 누르면 프로그램이 자동으로 업데이트된 뒤 다시 실행됩니다.\n"
+                "「아니오」를 누르면 브라우저에서 직접 받을 수 있습니다."
+            )
+            choice = messagebox.askyesnocancel("업데이트 안내", message)
+            if choice is True:
+                self._start_auto_update(info)
+            elif choice is False and info.url:
+                webbrowser.open(info.url)
+            return
+
         message += (
-            "\n\n다운로드한 exe로 기존 파일을 덮어쓴 뒤 실행하면 업데이트됩니다.\n"
+            "\n\nzip 파일을 받아 기존 폴더에 덮어쓴 뒤 실행하면 업데이트됩니다.\n"
             "브라우저에서 「일반적으로 다운로드되지 않음」 경고가 뜨면 "
             "「…」→ 유지 를 선택하세요.\n\n"
             "지금 다운로드 페이지를 열까요?"
@@ -598,6 +614,74 @@ class NaverRankApp(ctk.CTk):
                     "업데이트",
                     "다운로드 주소가 없습니다.\n배포 페이지에서 새 파일을 받아 주세요.",
                 )
+
+    def _start_auto_update(self, info: UpdateInfo) -> None:
+        if not info.url:
+            messagebox.showwarning("업데이트", "다운로드 주소가 없습니다.")
+            return
+
+        dialog = ctk.CTkToplevel(self)
+        dialog.title("업데이트 중")
+        dialog.geometry("360x140")
+        dialog.resizable(False, False)
+        dialog.transient(self)
+        dialog.grab_set()
+
+        status = ctk.CTkLabel(dialog, text="다운로드 준비 중...")
+        status.pack(padx=20, pady=(24, 8))
+        progress = ctk.CTkProgressBar(dialog, width=300)
+        progress.pack(padx=20, pady=8)
+        progress.set(0)
+
+        def close_dialog() -> None:
+            if dialog.winfo_exists():
+                dialog.grab_release()
+                dialog.destroy()
+
+        def on_progress(done: int, total: int) -> None:
+            if total > 0:
+                fraction = min(done / total, 1.0)
+                self.after(0, lambda: progress.set(fraction))
+                percent = int(fraction * 100)
+                self.after(0, lambda: status.configure(text=f"다운로드 중... {percent}%"))
+            else:
+                self.after(0, lambda: status.configure(text="다운로드 중..."))
+
+        def worker() -> None:
+            zip_path = Path(tempfile.gettempdir()) / f"NaverRankChecker-{info.version}.zip"
+            try:
+                download_file(
+                    info.url,
+                    zip_path,
+                    current_version=APP_VERSION,
+                    on_progress=on_progress,
+                )
+            except (urllib.error.URLError, TimeoutError, OSError) as exc:
+                self.after(0, close_dialog)
+                self.after(
+                    0,
+                    lambda: messagebox.showerror(
+                        "업데이트 실패",
+                        f"다운로드에 실패했습니다.\n{exc}\n\n브라우저에서 직접 받아 주세요.",
+                    ),
+                )
+                return
+
+            def finish() -> None:
+                close_dialog()
+                try:
+                    schedule_apply_update(zip_path)
+                except RuntimeError as exc:
+                    messagebox.showerror("업데이트 실패", str(exc))
+                    return
+                self._closing = True
+                self.quit()
+                self.destroy()
+
+            self.after(0, lambda: status.configure(text="설치 준비 중... 잠시 후 다시 실행됩니다."))
+            self.after(400, finish)
+
+        threading.Thread(target=worker, daemon=True).start()
 
     def _on_delay_change(self, value: float) -> None:
         self.delay_label.configure(text=f"{value:.0f}초")
